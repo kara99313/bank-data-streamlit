@@ -1,0 +1,87 @@
+{
+  "created_utc": "2026-11-05T14:53:38.039017+00:00",
+  "author": "Karaboué VAKABOU",
+  "selected_model": "XGBoost",
+  "python": "3.12.3",
+  "versions": {
+    "scikit-learn": "1.6.1",
+    "xgboost": "3.4.1",
+    "pandas": "3.1.1",
+    "numpy": "2.5.4",
+    "joblib": "1.6.0",
+    "matplotlib": "3.11.2",
+    "seaborn": "0.13.2",
+    "plotly": "7.1.0",
+    "streamlit": "1.66.1",
+    "reportlab": "4.4.9"
+  },
+  "data_sha256": "a2c3af70e3aadf6ae5911b59d6d32612beb12c76dfb409c8e316681d4c99b756",
+  "source_sha256": {
+    "bank_ml.py": "c55e9ecf918b291bc03907e2656375d0d38873c9e18234060a68288b50f477a1",
+    "Projet_Clas_Bank_Data_VAKABOU.ipynb": "1d91a285e957afe00be75c264cd17c53ed3df2a34af8a665c4bfa4d0f760d42b"
+  },
+  "raw_rows": 11640,
+  "clean_rows": 11639,
+  "split": {
+    "train": 9311,
+    "validation": 1164,
+    "test": 1164
+  },
+  "random_state": 42,
+  "cv": 5,
+  "selection": "F1 validation (yes), puis ROC AUC",
+  "best_params": {
+    "model__max_depth": 4,
+    "model__n_estimators": 150
+  },
+  "validation_metrics": {
+    "Accuracy": 0.8118556701030928,
+    "F1": 0.7616974972796517,
+    "Precision": 0.7692307692307693,
+    "Recall": 0.7543103448275862,
+    "ROC_AUC": 0.8890332512315271,
+    "F1_train": 0.8493377483443708,
+    "F1_CV": 0.7643404649436017,
+    "ecart_F1_train_val": 0.08764025106471907
+  },
+  "test_metrics": {
+    "Accuracy": 0.8316151202749141,
+    "F1": 0.7817371937639198,
+    "Precision": 0.8087557603686636,
+    "Recall": 0.7564655172413793,
+    "ROC_AUC": 0.9005357142857141
+  },
+  "reload_verified": true,
+  "features": [
+    "age",
+    "job",
+    "marital",
+    "education",
+    "housing",
+    "loan",
+    "contact",
+    "month",
+    "day_of_week",
+    "duration",
+    "campaign",
+    "pdays",
+    "previous",
+    "poutcome"
+  ],
+  "limitations": [
+    "duration connue après contact",
+    "Probabilités non calibrées",
+    "Provenance et représentativité non établies",
+    "LabelEncoder impose un ordre artificiel",
+    "Grilles compactes ; validation aléatoire, sans évaluation temporelle"
+  ],
+  "artifact_sha256": {
+    "bank_pipeline.joblib": "12dae20a62fafe8b3a0e7a91db9aebd632749525fa40a0450d00b42f3761f1b0",
+    "preprocessor.joblib": "c017536a42e6f3b14b6788f686b7fdbd0c0d411dd20a116ae84f80c801c47a89",
+    "encoders.joblib": "009f3b5d9aa6a0a34c4ead99b6aac5a5e058dcbd4ab0f48ba8664f1226e91051",
+    "uniques.joblib": "5e8c7050535d87c803f86d92ae764cdc120fcc7adc16af7183fa3da5233523bf",
+    "scaler.joblib": "5aedc16d8ddf705bd87f29beaa93d538c146dc1e0cbdea4cf9fb030229dbdbbb",
+    "model.joblib": "c381f01fdf02f6784d290cf427202279e93de894656677e406436e17547a9630",
+    "list_items.joblib": "79f0ebd4b7bdb98643cee8270c621ba9f51f43de1dd8be93e22793a14d2a3919"
+  }
+}

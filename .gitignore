@@ -1,19 +1,24 @@
 # Environnement Python local
 .venv/
 
-# Fichiers temporaires Python
+# Fichiers temporaires
 __pycache__/
 *.pyc
+.ipynb_checkpoints/
 
-# Secrets et variables d’environnement
+# Secrets
 .streamlit/secrets.toml
 .env
 
-# Sauvegarde de l’ancienne application Gradio
-app_gradio_backup.py
+# Ancienne application Gradio à la racine
+/app_gradio_backup.py
 
-# Objets séparés conservés uniquement en sauvegarde locale
-encoders.joblib
-uniques.joblib
-scaler.joblib
-gb_model.joblib
+# Anciens objets à la racine uniquement
+/encoders.joblib
+/uniques.joblib
+/scaler.joblib
+/gb_model.joblib
+
+# Références et archives locales
+verification_reference/
+archives_bank_*/

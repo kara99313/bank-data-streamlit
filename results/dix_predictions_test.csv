@@ -1,0 +1,11 @@
+age,job,marital,education,housing,loan,contact,month,day_of_week,duration,campaign,pdays,previous,poutcome,classe_reelle,classe_predite,probabilite_yes
+29,blue-collar,married,basic.9y,yes,no,cellular,may,mon,666,1,999,0,nonexistent,Oui,Oui,0.84121484
+33,services,married,professional.course,yes,yes,cellular,jul,thu,630,4,999,0,nonexistent,Oui,Oui,0.6993771
+40,self-employed,married,high.school,yes,no,telephone,jul,mon,46,2,999,0,nonexistent,Non,Non,0.0002608265
+37,housemaid,married,basic.4y,yes,no,cellular,aug,tue,176,1,999,0,nonexistent,Non,Non,0.1878117
+33,unemployed,married,basic.9y,no,no,telephone,jun,wed,563,1,999,0,nonexistent,Oui,Oui,0.5267991
+33,management,married,university.degree,yes,no,telephone,may,mon,396,9,999,0,nonexistent,Non,Non,0.23051204
+39,blue-collar,married,basic.9y,no,no,cellular,jul,tue,181,1,999,0,nonexistent,Non,Non,0.10369891
+34,technician,married,professional.course,no,no,cellular,apr,fri,132,2,999,1,failure,Non,Non,0.09814004
+46,blue-collar,married,basic.4y,yes,no,telephone,may,thu,431,2,999,0,nonexistent,Non,Non,0.16013527
+30,student,single,unknown,yes,no,cellular,mar,tue,136,1,9,1,success,Oui,Oui,0.9825125

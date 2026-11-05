@@ -1,360 +1,120 @@
 from pathlib import Path
 from io import StringIO
-
-import joblib
-import numpy as np
+import hashlib
+import json
 import pandas as pd
 import streamlit as st
+from bank_ml import FEATURES, CATEGORICAL, NUMERIC, load_bundle, predict
+from reports import report_context, html_report, pdf_report
 
+st.set_page_config(page_title='Bank Data | AfriAI Solutions',page_icon='🏦',layout='wide')
+st.title('Prédiction de souscription bancaire')
+st.caption('AfriAI Solutions | Karaboué VAKABOU | Projet pédagogique')
+st.write('Estimer la souscription à partir du profil client et des caractéristiques du contact.')
+ROOT=Path(__file__).resolve().parent
 
-# ============================================================
-# 1. Configuration de la page
-# ============================================================
-st.set_page_config(
-    page_title="Bank Data — AfriAI Solutions",
-    page_icon="🏦",
-    layout="wide",
-)
-
-st.title("🏦 Prédiction de souscription bancaire")
-st.caption("Projet Machine Learning — AfriAI Solutions")
-
-st.write(
-    "Renseignez le profil d’un client ou importez un fichier CSV "
-    "pour obtenir une prédiction de souscription à un dépôt bancaire."
-)
-
-DOSSIER = Path(__file__).resolve().parent
-
-# Ordre repris de l’application Gradio existante.
-COLONNES = [
-    "age", "job", "marital", "education", "housing", "loan",
-    "contact", "month", "day_of_week", "duration", "campaign",
-    "pdays", "previous", "poutcome",
-]
-
-CATEGORIELLES = [
-    "job", "marital", "education", "housing", "loan",
-    "contact", "month", "day_of_week", "poutcome",
-]
-
-NUMERIQUES = ["age", "duration", "campaign", "pdays", "previous"]
-
-LIBELLES = {
-    "job": "Profession",
-    "marital": "Situation matrimoniale",
-    "education": "Niveau d’études",
-    "housing": "Crédit immobilier",
-    "loan": "Crédit personnel",
-    "contact": "Type de contact",
-    "month": "Mois du contact",
-    "day_of_week": "Jour du contact",
-    "poutcome": "Résultat de la campagne précédente",
-}
-
-
-# ============================================================
-# 2. Chargement depuis le fichier regroupé
-# ============================================================
 @st.cache_resource
-def charger_objets():
-    return joblib.load(DOSSIER / "list_items.joblib")
-
+def load_model(signature):
+    return load_bundle(ROOT)
 
 try:
-    encoders, uniques, scaler, modele = charger_objets()
-
-    if scaler.n_features_in_ != len(COLONNES):
-        raise ValueError("Le normaliseur n’attend pas 14 variables.")
-
-    if modele.n_features_in_ != len(COLONNES):
-        raise ValueError("Le modèle n’attend pas 14 variables.")
-
-    # Le dernier encodeur correspond à la cible : no / yes.
-    encodeur_cible = encoders[9]
-    code_yes = encodeur_cible.transform(["yes"])[0]
-    position_yes = list(modele.classes_).index(code_yes)
-
-except Exception as erreur:
-    st.error(f"Impossible de charger les objets : {erreur}")
+    # La signature déclenche un nouveau chargement après une nouvelle exécution du notebook.
+    signature=hashlib.sha256((ROOT/'artifacts/metadata.json').read_bytes()).hexdigest()
+    pipeline,meta=load_model(signature)
+except Exception as e:
+    st.error(f'Modèle indisponible : {e}')
+    st.info('Exécuter entièrement le notebook dans ce même environnement, puis relancer Streamlit.')
     st.stop()
 
+st.info('La durée du contact doit déjà être connue. Ce modèle ne permet pas un ciblage entièrement avant appel.')
+with st.expander('Modèle, performances et limites'):
+    st.write('Modèle retenu :',meta['selected_model'])
+    st.write('Entraînement UTC :',meta['created_utc'])
+    st.dataframe(pd.DataFrame([meta['test_metrics']],index=['Test du notebook']))
+    for limitation in meta['limitations']:st.write('- '+limitation)
+    st.caption('Performances issues des métadonnées du notebook ; probabilités non calibrées.')
 
-with st.expander("Informations sur le modèle"):
-    st.write("Algorithme :", type(modele).__name__)
-    st.write("Nombre de variables d’entrée :", modele.n_features_in_)
-    st.caption(
-        "L’ordre des variables reprend l’application existante. "
-        "Sa concordance avec l’entraînement sera vérifiée dans le notebook."
-    )
-
-st.info(
-    "La durée du dernier contact doit être connue. "
-    "Cette version ne permet donc pas une utilisation entièrement "
-    "avant le premier appel."
-)
-
-
-# ============================================================
-# 3. Fonction commune de préparation et de prédiction
-# ============================================================
-def predire(donnees):
-    if donnees.empty:
-        raise ValueError("Le tableau ne contient aucune ligne.")
-
-    if donnees.columns.duplicated().any():
-        raise ValueError("Le tableau contient des noms de colonnes en double.")
-
-    manquantes = [c for c in COLONNES if c not in donnees.columns]
-    if manquantes:
-        raise ValueError(
-            "Colonnes manquantes : " + ", ".join(manquantes)
-        )
-
-    x = donnees[COLONNES].copy()
-
-    if x.isna().any().any():
-        colonnes_vides = x.columns[x.isna().any()].tolist()
-        raise ValueError(
-            "Valeurs manquantes dans : " + ", ".join(colonnes_vides)
-        )
-
-    # Vérifier les variables numériques.
-    for colonne in NUMERIQUES:
-        x[colonne] = pd.to_numeric(x[colonne], errors="coerce")
-
-        if not np.isfinite(x[colonne].to_numpy(dtype=float)).all():
-            raise ValueError(
-                f"La colonne '{colonne}' doit contenir "
-                "uniquement des nombres finis."
-            )
-
-        if (x[colonne] < 0).any():
-            raise ValueError(
-                f"La colonne '{colonne}' contient des valeurs négatives."
-            )
-
-    # Encoder les neuf variables catégorielles.
-    for i, colonne in enumerate(CATEGORIELLES):
-        valeurs = x[colonne].astype(str).str.strip()
-        autorisees = set(encoders[i].classes_)
-        inconnues = sorted(set(valeurs) - autorisees)
-
-        if inconnues:
-            raise ValueError(
-                f"Modalités inconnues dans '{colonne}' : "
-                + ", ".join(inconnues[:10])
-            )
-
-        x[colonne] = encoders[i].transform(valeurs)
-
-    # Appliquer le normaliseur sauvegardé, puis le modèle.
-    x_normalise = scaler.transform(x.to_numpy(dtype=float))
-
-    codes_predits = modele.predict(x_normalise)
-    classes_predites = encodeur_cible.inverse_transform(
-        np.asarray(codes_predits, dtype=int)
-    )
-    probabilites = modele.predict_proba(x_normalise)[:, position_yes]
-
-    resultat = donnees.copy()
-    resultat["prediction_souscription"] = [
-        "Oui" if classe == "yes" else "Non"
-        for classe in classes_predites
-    ]
-    resultat["probabilite_souscription_pct"] = np.round(
-        probabilites * 100, 2
-    )
-
-    return resultat
+LABELS={'age':'Âge','job':'Profession','marital':'Situation matrimoniale','education':'Niveau d’études',
+        'housing':'Crédit immobilier','loan':'Crédit personnel','contact':'Type de contact','month':'Mois du contact',
+        'day_of_week':'Jour du contact','duration':'Durée du contact (secondes)','campaign':'Nombre de contacts de la campagne',
+        'pdays':'Jours depuis le contact précédent (999 = jamais contacté)','previous':'Contacts avant cette campagne',
+        'poutcome':'Résultat de la campagne précédente'}
+DEFAULTS={'age':35,'duration':180,'campaign':1,'pdays':999,'previous':0}
+MODALITIES=dict(zip(CATEGORICAL,pipeline.named_steps['prepare'].uniques_))
+example=pd.DataFrame([{'age':35,'job':'admin.','marital':'married','education':'university.degree',
+'housing':'yes','loan':'no','contact':'cellular','month':'may','day_of_week':'mon','duration':180,
+'campaign':1,'pdays':999,'previous':0,'poutcome':'nonexistent'}])[FEATURES]
 
 
-# ============================================================
-# 4. Prédiction individuelle
-# ============================================================
-onglet_simple, onglet_csv = st.tabs(
-    ["👤 Prédiction individuelle", "📁 Prédictions par CSV"]
-)
+def store_result(key,data):
+    result=predict(data,pipeline)
+    ctx=report_context(meta)
+    st.session_state[key]={'result':result,'context':ctx,'html':html_report(result,ctx),'pdf':pdf_report(result,ctx)}
 
-with onglet_simple:
-    st.subheader("Profil du client")
-    st.caption(
-        "Les modalités des listes sont conservées dans leur langue "
-        "d’origine pour correspondre aux données du modèle."
-    )
 
-    with st.form("formulaire_client"):
-        gauche, droite = st.columns(2)
-        saisie = {}
+def show_result(key):
+    if key not in st.session_state:return
+    item=st.session_state[key];r=item['result']
+    st.success(f"{len(r)} client(s) | Modèle : {meta['selected_model']}")
+    if len(r)==1:
+        a,b=st.columns(2)
+        a.metric('Souscription prédite',r.iloc[0]['prediction_souscription'])
+        b.metric('Probabilité estimée de souscription',f"{r.iloc[0]['probabilite_souscription_pct']:.2f} %")
+    st.dataframe(r,hide_index=True)
+    a,b,c=st.columns(3)
+    a.download_button('Résultats CSV',r.to_csv(index=False).encode('utf-8-sig'),f'{key}.csv','text/csv',key=key+'csv')
+    b.download_button('Rapport HTML',item['html'],f'{key}.html','text/html',key=key+'html')
+    c.download_button('Rapport PDF',item['pdf'],f'{key}.pdf','application/pdf',key=key+'pdf')
 
-        with gauche:
-            saisie["age"] = st.number_input(
-                "Âge du client",
-                min_value=18,
-                max_value=100,
-                value=35,
-                step=1,
-            )
+# Une nouvelle version du modèle invalide les résultats conservés en session.
+if st.session_state.get('model_signature')!=signature:
+    for k in ['individual_result','batch_result','batch_hash']:st.session_state.pop(k,None)
+    st.session_state['model_signature']=signature
 
-            for i, colonne in enumerate(CATEGORIELLES[:5]):
-                saisie[colonne] = st.selectbox(
-                    LIBELLES[colonne],
-                    options=list(uniques[i]),
-                    key=f"champ_{colonne}",
-                )
+simple,batch=st.tabs(['Prédiction individuelle','Prédictions par CSV'])
+with simple:
+    with st.form('client',clear_on_submit=False):
+        cols=st.columns(2);values={}
+        for i,c in enumerate(FEATURES):
+            with cols[i%2]:
+                if c in CATEGORICAL:values[c]=st.selectbox(LABELS[c],list(MODALITIES[c]))
+                else:values[c]=st.number_input(LABELS[c],min_value=17 if c=='age' else (1 if c=='campaign' else 0),
+                    max_value=120 if c=='age' else None,value=DEFAULTS[c],step=1)
+        submit=st.form_submit_button('Prédire',type='primary')
+    if submit:
+        st.session_state.pop('individual_result',None)
+        try:store_result('individual_result',pd.DataFrame([values])[FEATURES])
+        except Exception as e:st.error(str(e))
+    show_result('individual_result')
+    if st.button('Nouvelle prédiction'):
+        st.session_state.pop('individual_result',None);st.rerun()
 
-        with droite:
-            for i in range(5, len(CATEGORIELLES)):
-                colonne = CATEGORIELLES[i]
-                saisie[colonne] = st.selectbox(
-                    LIBELLES[colonne],
-                    options=list(uniques[i]),
-                    key=f"champ_{colonne}",
-                )
-
-            saisie["duration"] = st.number_input(
-                "Durée du dernier contact, en secondes",
-                min_value=0,
-                value=180,
-                step=1,
-            )
-
-            saisie["campaign"] = st.number_input(
-                "Nombre de contacts pendant la campagne actuelle",
-                min_value=1,
-                value=1,
-                step=1,
-            )
-
-            saisie["pdays"] = st.number_input(
-                "Jours depuis le contact de la campagne précédente",
-                min_value=0,
-                value=999,
-                step=1,
-                help="999 signifie que le client n’a pas été contacté auparavant.",
-            )
-
-            saisie["previous"] = st.number_input(
-                "Nombre de contacts avant la campagne actuelle",
-                min_value=0,
-                value=0,
-                step=1,
-            )
-
-        soumettre = st.form_submit_button(
-            "Prédire",
-            type="primary",
-        )
-
-    if soumettre:
+with batch:
+    st.write('Colonnes requises, ordre libre :');st.code(','.join(FEATURES))
+    st.caption('Valeurs manquantes rejetées ; catégories inédites signalées. Limite de cette interface : 1 000 clients par lot.')
+    st.download_button('Exemple CSV fictif',example.to_csv(index=False).encode('utf-8-sig'),'exemple_clients.csv','text/csv')
+    epoch=st.session_state.get('upload_epoch',0)
+    uploaded=st.file_uploader('Choisir le CSV',type=['csv'],key=f'upload_{epoch}')
+    current_hash=hashlib.sha256(uploaded.getvalue()).hexdigest() if uploaded else None
+    if current_hash!=st.session_state.get('batch_hash'):
+        st.session_state.pop('batch_result',None);st.session_state['batch_hash']=current_hash
+    if uploaded:
         try:
-            donnees_client = pd.DataFrame([saisie])[COLONNES]
-            resultat = predire(donnees_client)
-
-            classe = resultat.loc[0, "prediction_souscription"]
-            probabilite = resultat.loc[
-                0, "probabilite_souscription_pct"
-            ]
-
-            st.subheader("Résultat")
-            col1, col2 = st.columns(2)
-
-            col1.metric("Souscription prédite", classe)
-            col2.metric(
-                "Probabilité estimée de souscription",
-                f"{probabilite:.2f} %",
-            )
-
-            st.progress(float(probabilite) / 100)
-            st.caption(
-                "La probabilité est une estimation du modèle, "
-                "pas une certitude."
-            )
-
-        except Exception as erreur:
-            st.error(f"Prédiction impossible : {erreur}")
-
-
-# ============================================================
-# 5. Prédictions multiples par CSV
-# ============================================================
-with onglet_csv:
-    st.subheader("Importer plusieurs clients")
-
-    st.write(
-        "Le fichier doit contenir les 14 colonnes suivantes. "
-        "Leur ordre dans le CSV est libre."
-    )
-    st.code(", ".join(COLONNES), language=None)
-
-    # Exemple fictif destiné à tester le format.
-    exemple = {
-        "age": 35,
-        "job": "admin.",
-        "marital": "married",
-        "education": "university.degree",
-        "housing": "yes",
-        "loan": "no",
-        "contact": "cellular",
-        "month": "may",
-        "day_of_week": "mon",
-        "duration": 180,
-        "campaign": 1,
-        "pdays": 999,
-        "previous": 0,
-        "poutcome": "nonexistent",
-    }
-
-    st.download_button(
-        "Télécharger un exemple CSV fictif",
-        data=pd.DataFrame([exemple])[COLONNES].to_csv(
-            index=False
-        ).encode("utf-8-sig"),
-        file_name="exemple_clients.csv",
-        mime="text/csv",
-    )
-
-    fichier = st.file_uploader(
-        "Choisir un fichier CSV",
-        type=["csv"],
-    )
-
-    if fichier is not None:
-        try:
-            texte = fichier.getvalue().decode("utf-8-sig")
-
-            donnees = pd.read_csv(
-                StringIO(texte),
-                sep=None,
-                engine="python",
-            )
-            donnees.columns = donnees.columns.str.strip()
-
-            st.write("Aperçu du fichier importé")
-            st.dataframe(donnees.head(10), hide_index=True)
-            st.write("Nombre de clients :", len(donnees))
-
-            if st.button(
-                "Prédire pour tous les clients",
-                type="primary",
-            ):
-                with st.spinner("Calcul des prédictions…"):
-                    resultat_csv = predire(donnees)
-
-                st.success(
-                    f"Prédictions terminées pour "
-                    f"{len(resultat_csv)} client(s)."
-                )
-                st.dataframe(resultat_csv, hide_index=True)
-
-                st.download_button(
-                    "Télécharger les résultats",
-                    data=resultat_csv.to_csv(index=False).encode(
-                        "utf-8-sig"
-                    ),
-                    file_name="predictions_bank_data.csv",
-                    mime="text/csv",
-                )
-
-        except Exception as erreur:
-            st.error(f"Traitement impossible : {erreur}")
+            text=uploaded.getvalue().decode('utf-8-sig')
+            from csv import Sniffer
+            dialect=Sniffer().sniff(text[:8192],delimiters=',;\t')
+            from csv import reader
+            header=next(reader(StringIO(text),dialect))
+            if len(set(c.strip() for c in header))!=len(header):raise ValueError('Colonnes dupliquées dans le CSV.')
+            data=pd.read_csv(StringIO(text),sep=dialect.delimiter)
+            data.columns=data.columns.str.strip()
+            if len(data)>1000:raise ValueError('Maximum 1 000 clients par fichier.')
+            st.dataframe(data.head(10),hide_index=True)
+            if st.button('Prédire pour tous les clients',type='primary'):
+                st.session_state.pop('batch_result',None)
+                with st.spinner('Calcul et préparation des rapports…'):store_result('batch_result',data)
+        except Exception as e:st.error(str(e))
+    show_result('batch_result')
+    if st.button('Recommencer le lot'):
+        st.session_state.pop('batch_result',None)
+        st.session_state['upload_epoch']=epoch+1;st.rerun()
